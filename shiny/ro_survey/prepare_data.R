@@ -74,15 +74,17 @@ ct_ro$pc<-pc(ct_ro$freq,ct_ro$corpussize)
 
 # Prepare axiom data
 df_ax<-unique(df_axiomdata[axiomtype!="Declaration",.(o,ftype,corpus,axiomtype,axiomid,p)])
-ct_axt<-count(df_ax[,.(ftype,corpus,p,axiomtype)])
+df_ax<-merge(df_ax,df_ro,by.x = "p",by.y = "entity",all.x = TRUE)
+ct_axt<-count(df_ax[,.(ftype,corpus,p,axiomtype,label)])
 ct_axt<-ct_axt[order(-ct_axt$freq),]
 df_axo<-unique(df_axiomdata[axiomtype!="Declaration",.(o,ftype,corpus,axiomtype,p)])
 ct_axto<-count(df_axo[,.(ftype,corpus,p,axiomtype)])
+ct_axto<-merge(ct_axto,df_ro,by.x = "p",by.y = "entity",all.x = TRUE)
 ct_axto<-ct_axto[order(-ct_axto$freq),]
 
-ct_ax<-count(df_ax[,.(ftype,corpus,p)])
-names(ct_ax)<-c("ftype","corpus","p","axioms")
-ct_p<-merge(ct_p,ct_ax,by=c("ftype","corpus","p"),all = TRUE)
+ct_ax<-count(df_ax[,.(ftype,corpus,p,label)])
+names(ct_ax)<-c("ftype","corpus","p","label","axioms")
+ct_p<-merge(ct_p,ct_ax,by=c("ftype","corpus","p","label"),all = TRUE)
 
 # Prepare expressiondata
 df_exp<-unique(df_expressiondata[,.(o,ftype,corpus,expressiontype,axiomid,p)])
