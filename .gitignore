@@ -1,2 +1,6 @@
 
 .DS_Store
+ro_survey_cache/
+.Rhistory
+shiny/ro_survey/rsconnect/
+shiny/rmd/rsconnect/

@@ -20,4 +20,4 @@ RUN Rscript -e "devtools::install_github('rstudio/shinytest','rstudio/webdriver'
 RUN Rscript -e "webdriver::install_phantomjs()"
 
 ## assume shiny app is in build folder /app2
-COPY shiny/ro_survey /srv/shiny-server/
+COPY shiny/rmd /srv/shiny-server/

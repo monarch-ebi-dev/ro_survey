@@ -36,7 +36,7 @@ ui <- fluidPage(
    sidebarLayout(
       sidebarPanel(
         selectInput("corpus", label = "Corpus?",
-                    choices = unique(ct_p$corpus), selected = "bp"),
+                    choices = unique(ct_p$corpus), selected = "obo"),
         selectInput("import", label = "Imports?",
                     choices = unique(ct_p$ftype), selected = "merged")
       ),

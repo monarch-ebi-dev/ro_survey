@@ -1,0 +1,430 @@
+---
+title: "RO Usage analysis, October 2018"
+output: html_notebook
+resource_files:
+- rosurvey.RData
+runtime: shiny
+editor_options:
+  chunk_output_type: console
+---
+
+This App was produced by Nico Matentzoglu and David Osumi-Sutherland (EMBL-EBI) for the Monarch Initiative to help understanding the use of RO across ontologies on the web. 
+
+The corpus size is the number of ontologies that 1) downloaded successfully and 2) could be successfully preprocessed by Robot. 
+Reasons for failing the pre-processing are mostly parse errors (OWL API) and unloadable imports (for full break-down of processing success see bottom of page).
+
+```{r, echo=FALSE}
+library(shiny)
+library(data.table)
+library(stringr)
+library(plyr)
+library(ggplot2)
+library(DT)
+library(knitr)
+```
+
+```{r functions, echo=FALSE}
+pc<-function(x,y) {
+  return(round(100*(x/y),2))
+}
+
+ts<-function(x) {
+  return(DT::renderDataTable({
+     x
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE))
+}
+```
+
+```{r settings, echo=FALSE}
+ws = "rosurvey.RData"
+
+rbox_types<-c("SubPropertyChainOf", "SubObjectPropertyOf", "ObjectPropertyDomain", "InverseObjectProperties", "TransitiveObjectProperty", "ReflexiveObjectProperty", "AsymmetricObjectProperty", "IrrefexiveObjectProperty", "InverseFunctionalObjectProperty", "FunctionalObjectProperty", "SymmetricObjectProperty", "DisjointObjectProperties")
+tbox_abox_types<-c("SubClassOf", "EquivalentClasses", "Rule", "ClassAssertion", "ObjectPropertyAssertion","DisjointClasses")
+characteristics_axiom_types<-c("TransitiveObjectProperty", "ReflexiveObjectProperty", "AsymmetricObjectProperty", "IrrefexiveObjectProperty", "InverseFunctionalObjectProperty", "FunctionalObjectProperty", "SymmetricObjectProperty")
+
+options(scipen = 1000)
+opts_chunk$set(fig.width=12, fig.height=12, echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r load, echo=FALSE}
+load(ws)
+ro_labels<-unique(df_p[,c("p","label")])
+```
+
+# Analysis of OBO snapshot
+```{r prepro_obo, echo=FALSE}
+# IN df_ax, df_p
+
+dm<-df_ax[df_ax$ftype=="merged"&df_ax$corpus=="obo",]
+dni<-df_ax[df_ax$ftype=="noimports"&df_ax$corpus=="obo",]
+dm_noro_tbox_abox<-dm[dm$o!="ro"&(dm$axiomtype %in% tbox_abox_types),]
+dm_noro_tbox_abox_ni<-dni[dni$o!="ro"&(dni$axiomtype %in% tbox_abox_types),]
+corpus<-unique(df_p[,c("ftype","corpus","corpussize")])
+dsig_m<-df_p[df_p$ftype=="merged"&df_p$corpus=="obo",c("p","o")]
+dsig_ni<-df_p[df_p$ftype=="noimports"&df_p$corpus=="obo",c("p","o")]
+ct_unique_o_using_rel<-length(unique(dm_noro_tbox_abox$o))
+ct_unique_rel_tbox_abox<-length(unique(dm_noro_tbox_abox$p))
+ct_unique_o_using_rel_ni<-length(unique(dm_noro_tbox_abox_ni$o))
+ct_unique_rel_tbox_abox_ni<-length(unique(dm_noro_tbox_abox_ni$p))
+# OUT dm, dni, dm_noro_tbox_abox, dm_noro_tbox_abox_ni, corpus, dsig_m, dsig_ni, ct_unique_o_using_rel, ct_unique_rel_tbox_abox, ct_unique_o_using_rel_ni, ct_unique_rel_tbox_abox_ni, 
+```
+
+## OBO ontologies and RO relation usage
+```{r breakdown_o, echo=FALSE}
+#IN: dsig_m, dsig_ni
+dsig_m_unique<-unique(dsig_m[,c("p","o")])
+dsig_ni_unique<-unique(dsig_ni[,c("p","o")])
+dsig_m_o_ct<-count(dsig_m_unique[,c("o")])
+names(dsig_m_o_ct)<-c("o","ct_sig_m")
+dsig_ni_o_ct<-count(dsig_ni_unique[,c("o")])
+names(dsig_ni_o_ct)<-c("o","ct_sig_ni")
+df_o<-merge(dsig_ni_o_ct,dsig_m_o_ct,by="o",all=TRUE)
+df_o[is.na(df_o)] <- 0
+#write.csv(file = "ro_survey_onts.csv",df_o)
+ts(df_o)
+dsig_m_unique<-dsig_ni_unique<-dsig_m_o_ct<-dsig_ni_o_ct<-NULL
+# OUT: df_o
+```
+
+# Main relation distribution and counts across ABox and TBox axioms 
+Ignoring RBox axioms, and ignoring RO itself.
+
+```{r prep_plots, echo=FALSE}
+#IN: dm_noro_tbox_abox, dm_noro_tbox_abox_ni
+dgg<-merge(dm_noro_tbox_abox,corpus,by=c("ftype","corpus"),all.x = TRUE)
+dgg<-unique(dgg[,c("p","label","o","corpussize")])
+cdgg<-count(dgg[,c("p","label","corpussize")])
+cdgg$pc<-round(pc(cdgg$freq,cdgg$corpussize),0)
+cdgg$type<-"merged"
+cdgg$corpussize<-NULL
+#names(cdgg)<-c("p","label","corpussize","ct_m","pc_m")
+dgg_ni<-merge(dm_noro_tbox_abox_ni,corpus,by=c("ftype","corpus"),all.x = TRUE)
+dgg_ni<-unique(dgg_ni[,c("p","label","o","corpussize")])
+cdgg_ni<-count(dgg_ni[,c("p","label","corpussize")])
+cdgg_ni$pc<-round(pc(cdgg_ni$freq,cdgg_ni$corpussize),0)
+cdgg_ni$type<-"removed"
+cdgg_ni$corpussize<-NULL
+
+x<-rbind(cdgg,cdgg_ni)
+dgg<-dgg_ni<-cdgg_ni<-cdgg<-NULL
+
+x<-reshape(x, idvar = c("p","label"), timevar = "type", direction = "wide")
+x$top20<-ifelse(x$freq.merged>25,TRUE,FALSE)
+x<-melt(id.vars=c("p","label","top20"),x)
+x$measure<-gsub(".merged","",gsub(".removed","",x$variable))
+x$ftype<-gsub("freq.","",gsub("pc.","",x$variable))
+x$variable<-NULL
+x<-reshape(x, idvar = c("p","label","ftype","top20"), timevar = "measure", direction = "wide")
+names(x)<-gsub("value.","",names(x))
+x[is.na(x)] <- 0
+
+#OUT: x (to be removed after plotting)
+```
+
+### Distribution of usage (nr of ontologies) for all RO relations 
+Merged imports
+```{r}
+renderPlot({
+ggplot(x[x$ftype=="merged",],aes(x=reorder(label,freq),y=freq))+geom_bar(stat="identity")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  xlab("RO Relation") + ylab("Number of ontologies used in") 
+})
+#ggsave("obo_all.png", width = 15, height = 7, units = "cm")
+```
+
+### Relations used in more than 25 ontologies
+Merged imports
+```{r}
+renderPlot({
+ggplot(x[x$ftype=="merged"&x$top20,],aes(x=reorder(label,freq),y=freq))+geom_bar(stat="identity")+ geom_text(aes(label=paste(freq," (",pc," %)",sep="")), hjust=1, color="white") +xlab("RO Relation") + ylab("Number of ontologies used in") + coord_flip() 
+})
+#ggsave("obo_20_plus.png", width = 12, height = 12, units = "cm")
+```
+
+### Distribution of usage (nr of ontologies) for all RO relations 
+By merged vs removed imports
+```{r}
+renderPlot({
+ggplot(x,aes(x=reorder(label,freq),y=freq,fill=ftype))+geom_bar(stat="identity",position = "dodge")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  xlab("RO Relation") + ylab("Number of ontologies used in") 
+})
+#ggsave("obo_all_mni.png", width = 15, height = 7, units = "cm")
+```
+
+### Relations used in more than 25 ontologies
+By merged vs removed imports
+```{r}
+renderPlot({
+ggplot(x[x$top20,],aes(x=reorder(label,freq),y=freq,fill=ftype))+geom_bar(stat="identity",position = "dodge")+ geom_text(aes(label=paste("",pc," %",sep="")), hjust=1, color="black",position = position_dodge(width = 1)) +xlab("RO Relation") + ylab("Number of ontologies used in") + coord_flip() 
+})
+#ggsave("obo_20_plus_mni.png", width = 12, height = 12, units = "cm")
+ts(x)
+```
+
+
+### Number of ontologies by axiom types
+Types of axioms involving RO relations (i.e. contain at least one RO relation in their signature)
+```{r, echo=FALSE}
+# How many ontologies import a characteric of a RO relation
+d_char<-dm[dm$o!="ro"&(dm$axiomtype %in% characteristics_axiom_types),]
+d_char<-unique(d_char[,c("axiomtype","label","o")])
+d_char_ct<-count(d_char[,c("label","axiomtype")])
+d_char_p<-unique(d_char[,c("axiomtype","label")])
+d_char_p_ct<-count(d_char_p[,c("axiomtype")])
+ts(d_char_p_ct)
+```
+
+### Full Breadown of usage of RO relations
+```{r}
+# P occurs in signature (merged)
+d_sig_ct<-count(dsig_m[,c("p")])
+names(d_sig_ct)<-c("p","in_sig_m")
+
+# P occurs in signature (no imports)
+d_sig_ni_ct<-count(dsig_ni[,c("p")])
+names(d_sig_ni_ct)<-c("p","in_sig_ni")
+
+# P usage TBOX ABOX (imports merged)
+ro_cts_m<-unique(dm_noro_tbox_abox[,c("p","o")])
+ro_cts_m<-count(ro_cts_m[,c("p")])
+names(ro_cts_m)<-c("p","tboxabox_merged")
+
+# P usage TBOX ABOX (imports removed)
+ro_cts_ni<-unique(dm_noro_tbox_abox_ni[,c("p","o")])
+ro_cts_ni<-count(ro_cts_ni[,c("p")])
+names(ro_cts_ni)<-c("p","tboxabox_noimports")
+
+# P usage broken down by axiom type (imports merged)
+ro_ctaxs<-unique(dm[,c("p","o","axiomtype")])
+ro_ctaxs<-count(ro_ctaxs[,c("p","axiomtype")])
+ro_ctaxs<-reshape(ro_ctaxs, idvar = "p", timevar = "axiomtype", direction = "wide")
+names(ro_ctaxs)<-gsub("freq.","",names(ro_ctaxs))
+
+ro_all<-merge(ro_labels,ro_cts_m,by="p",all=TRUE)
+ro_all<-merge(ro_all,ro_cts_ni,by="p",all=TRUE)
+ro_all<-merge(ro_all,d_sig_ct,by="p",all=TRUE)
+ro_all<-merge(ro_all,d_sig_ni_ct,by="p",all=TRUE)
+ro_all<-merge(ro_all,ro_ctaxs,by="p",all=TRUE)
+ro_all[is.na(ro_all)] <- 0
+ts(ro_all)
+#write.csv(ro_all,file="ro.csv")
+
+```
+
+```{r cleanobo, echo=FALSE}
+#x<-dm<-dni<-dm_noro_tbox_abox<-dm_noro_tbox_abox_ni<-corpus<-dsig_m<-dsig_ni<-ct_unique_o_using_rel<-ct_unique_rel_tbox_abox<-ct_unique_o_using_rel_ni<-ct_unique_rel_tbox_abox_ni<-NULL
+```
+
+# Analysis involving other corpora 
+
+```{r prepromain, echo=FALSE}
+# IN: df_ax
+ct_axt<-count(df_ax[,.(ftype,corpus,p,axiomtype,label)])
+ct_axt<-ct_axt[order(-ct_axt$freq),]
+
+df_axo<-unique(df_ax[,.(o,ftype,corpus,axiomtype,p)])
+ct_axto<-count(df_axo[,.(ftype,corpus,p,axiomtype)])
+ct_axto<-merge(ct_axto,df_ro,by.x = "p",by.y = "entity",all.x = TRUE)
+ct_axto<-ct_axto[order(-ct_axto$freq),]
+
+ct_p<-count(df_p[,.(ftype,corpus,p,label,corpussize)])
+ct_p$pc<-pc(ct_p$freq,ct_p$corpussize)
+#ct_p<-merge(ct_p,df_ro,by.x = "p",by.y = "entity",all = TRUE) //every relation is used at least once, else this would be necessary.
+ct_p<-ct_p[order(-ct_p$freq),]
+
+ct_o<-count(df_p[,.(ftype,corpus,o)])
+ct_o<-ct_o[order(-ct_o$freq),]
+
+df_po<-unique(df_p[,.(ftype,corpus,corpussize,o)])
+ct_ro<-count(df_po[,.(ftype,corpus,corpussize)])
+ct_ro$pc<-pc(ct_ro$freq,ct_ro$corpussize)
+
+ct_ax<-count(df_ax[,.(ftype,corpus,p,label)])
+names(ct_ax)<-c("ftype","corpus","p","label","axioms")
+
+ct_p<-merge(ct_p,ct_ax,by=c("ftype","corpus","p","label"),all = TRUE)
+
+```
+
+## How many ontologies use RO?
+```{r, echo=FALSE}
+DT::renderDataTable({
+    x<- ct_ro
+    names(x)<-c("Imports","Corpus","Corpus size","Ontologies using RO","% Ontologies using RO")
+    x
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+```
+
+## Controls
+These controls will restrict all the following analyses
+```{r controls, echo=FALSE}
+selectInput("corpus", label = "Corpus?",
+                    choices = unique(df_p$corpus), selected = "obo")
+
+selectInput("import", label = "Imports?",
+                    choices = unique(df_p$ftype), selected = "merged")
+
+selectInput("exclude", label = "Exclude ontologies",
+                    choices = unique(df_p$o), selected = "ro",multiple = TRUE)
+```
+
+## How many different RO relations does this ontology use?
+Use the axiomtype restrictor to filter what kinds of axioms are considered for determining usage. For example, if you select SubClassOf and EquivalentClasses, only those ontologies will be counted that, for a relation P, used at least one SubClassOf or EquivalentClasses axiom using P.
+
+
+```{r, echo=FALSE}
+selectInput("in_axiomtype", label = "Which axiom type?",
+                    choices = unique(df_ax$axiomtype), selected = "SubClassOf",multiple = TRUE)
+renderUI({
+     d2<-unique(ct_p[ct_p$ftype==input$import&ct_p$corpus==input$corpus,c("p","freq")])
+     sliderInput("rel_ct_offset", "Cut-off (Relation count):",min = 0, max = max(d2$freq)+1,step=1,value=c(median(unique(d2$freq)),max(unique(d2$freq))+1))
+   })
+
+renderPlot({
+    dgg<-df_ax[df_ax$ftype==input$import&df_ax$corpus==input$corpus&(df_ax$axiomtype %in% input$in_axiomtype)&!(df_ax$o %in% input$exclude),]
+    dgg<-merge(dgg,unique(df_p[,c("ftype","corpus","corpussize")]),by=c("ftype","corpus"),all.x = TRUE)
+    dgg<-unique(dgg[,c("label","o","corpussize")])
+    cdgg<-count(dgg[,c("label","corpussize")])
+    cdgg$pc<-pc(cdgg$freq,cdgg$corpussize)
+    cdgg<-cdgg[cdgg$freq>=input$rel_ct_offset[1]&cdgg$freq<=input$rel_ct_offset[2],]
+    ggplot(cdgg,aes(x=reorder(label,freq),y=freq))+geom_bar(stat="identity")+ geom_text(aes(label=paste(freq," (",pc," %)",sep="")), hjust=1.1, color="white") +xlab("RO Relation") + ylab("Number of ontologies used in") + coord_flip()
+    },height = 400,width = 600)
+
+h5("The following table shows the number of distinct RO relations used across the selected axiom types")
+DT::renderDataTable({
+     dgg<-unique(df_ax[df_ax$ftype==input$import&df_ax$corpus==input$corpus&(df_ax$axiomtype %in% input$in_axiomtype)&!(df_ax$o %in% input$exclude),c("label","o")])
+     cdgg<-count(dgg[,c("o")])
+     cdgg<-cdgg[cdgg$freq>=input$rel_ct_offset[1]&cdgg$freq<=input$rel_ct_offset[2],]
+     cdgg[order(-cdgg$freq),]
+     names(cdgg)<-c("Ontology","Number of RO relations used")
+     cdgg
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+```
+
+## What kind of axiomtype is the RO relation used in? In how many axioms of that type is it used?
+
+
+```{r, echo=FALSE}
+#IN: ct_axt (needs to be reactive!)
+p("Select an axiom type to see how many axioms of that type where used together with a particular relation. ")
+selectInput("rel_ax_type", label = "Which axiom type?", choices = unique(ct_axto$axiomtype), selected = "SubClassOf",multiple = FALSE)
+
+renderUI({
+     df<-ct_axt[ct_axt$ftype==input$import&ct_axt$corpus==input$corpus,c("p","freq")]
+     sliderInput("rel_ct_ax_offset", "Cut-off (Relation count):",min = 0, max = max(df$freq)+1,step=1,value=c(median(unique(df$freq)),max(unique(df$freq))))
+   })
+
+renderPlot({
+    ggplot(ct_axt[ct_axt$ftype==input$import&ct_axt$corpus==input$corpus&ct_axt$freq>=input$rel_ct_ax_offset[1]&ct_axt$freq<=input$rel_ct_ax_offset[2]&ct_axt$axiomtype==input$rel_ax_type,c("label","axiomtype","freq")],aes(x=reorder(label,freq),y=freq))+geom_bar(stat="identity")+xlab("RO Relation") + ylab("Number of axioms used in") + coord_flip()
+  },height = 400,width = 600)  
+
+DT::renderDataTable({
+  x<- ct_axt[ct_axt$ftype==input$import&ct_axt$corpus==input$corpus&ct_axt$axiomtype==input$rel_ax_type,c("p","label","axiomtype","freq")]
+  names(x)<-c("RO relation","Label","Axiomtype","Number of axioms")
+  x
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+
+```
+
+# What kind of axiomtype is the RO relation used in? In how many ontologies?
+```{r, echo=FALSE}
+DT::renderDataTable({
+     x<-ct_axto[ct_axto$ftype==input$import&ct_axto$corpus==input$corpus,c("p","axiomtype","freq")]
+     names(x)<-c("RO relation","Axiomtype","Nr. of ontologies")
+     x
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+```
+
+```{r, echo=FALSE}
+h5("What kind of class expressions is the RO relation used in? In how many axioms of that type is it used?")
+DT::renderDataTable({
+    x<-unique(df_exp[!(df_exp$o %in% input$exclude)&df_exp$ftype==input$import&df_exp$corpus==input$corpus,.(ftype,corpus,p,expressiontype,axiomid,o)])
+    x<-count(x[,.(ftype,corpus,p,expressiontype)])
+    
+     x<-x[,c("p","expressiontype","freq")]
+     x<-merge(x,ro_labels,by=c("p"),all.x=TRUE)
+     x<-x[order(-x$freq),]
+     names(x)<-c("RO relation","Expression type","Nr. axioms","Label")
+     x[,c("RO relation","Label","Expression type","Nr. axioms")]
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+
+hr()
+h4("What kind of class expressions is the RO relation used in? In how many ontologies?")
+DT::renderDataTable({
+    x<-df_expo[!(df_expo$o %in% input$exclude)&df_expo$ftype==input$import&df_expo$corpus==input$corpus,]
+    x<-count(x[,.(ftype,corpus,p,expressiontype)])
+    x<-x[,c("p","expressiontype","freq")]
+    x<-merge(x,ro_labels,by=c("p"),all.x=TRUE)
+    x<-x[order(-x$freq),]
+     names(x)<-c("RO relation","Expression type","Nr. ontologies","Label")
+     x[,c("RO relation","Label","Expression type","Nr. ontologies")]
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+
+hr()
+h4("Asserted domains and ranges of OBO relations")
+DT::renderDataTable({
+     x<-df_domain_range_asserted[df_domain_range_asserted$ftype==input$import&df_domain_range_asserted$corpus==input$corpus,c("p","domain","range")]
+     x<-merge(x,ro_labels,by=c("p"),all.x=TRUE)
+     names(x)<-c("RO relation","Domain","Range","Label")
+     x[,c("RO relation","Label","Domain","Range")]
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+
+hr()
+h4("Inferred domains of OBO relations")
+DT::renderDataTable({
+    x<-df_dom[df_dom$ftype==input$import&df_dom$corpus==input$corpus,.(ftype,corpus,p,subject,expressiontype)]
+    x<-count(x)
+     x<-x[,c("p","subject","expressiontype","freq")]
+     x<-merge(x,ro_labels,by=c("p"),all.x=TRUE)
+     x<-x[order(-x$freq),]
+     names(x)<-c("RO relation","Domain","Source expression","Nr. ontologies","Label")
+     x[,c("RO relation","Label","Domain","Source expression","Nr. ontologies")]
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+
+hr()
+h4("Inferred ranges of OBO relations")
+DT::renderDataTable({
+    x<-df_ran[df_ran$ftype==input$import&df_ran$corpus==input$corpus,.(ftype,corpus,p,object,expressiontype)]
+    x<-count(x)
+     x<-x[,c("p","object","expressiontype","freq")]
+     x<-merge(x,ro_labels,by=c("p"),all.x=TRUE)
+     x<-x[order(-x$freq),]
+     names(x)<-c("RO relation","Range","Source expression","Nr. ontologies","Label")
+     x[,c("RO relation","Label","Range","Source expression","Nr. ontologies")]
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+
+hr()
+h4("Full breakdown of relations used across ontologies")
+DT::renderDataTable({
+     x<-df_p[df_p$ftype==input$import&df_p$corpus==input$corpus,c("p","label","o")]
+     names(x)<-c("RO relation", "Label","Ontology")
+     x
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+```
+
+# Experiment data
+```{r, echo=FALSE}
+h4("Experiment")
+DT::renderDataTable({
+     ct_download_sucess
+   },options = list(pageLength = 10, autoWidth = TRUE),
+   rownames= FALSE)
+
+h6("https://monarchinitiative.org/")
+```
