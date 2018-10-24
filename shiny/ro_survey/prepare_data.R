@@ -6,7 +6,7 @@ library(DT)
 datadir<-"/Volumes/EBI/ro_survey_data/"
 ontologypath<-"/Volumes/EBI/tmp/ro/ontologies/"
 rodirpath<-"/Volumes/EBI/tmp/ro/"
-ws = "/ws/ro_survey/shiny/ro_survey/rosurvey.RData"
+ws = "/ws/ro_survey/shiny/rmd/rosurvey_obo.RData"
 
 
 get_csv<-function(dir,identifier) {
@@ -40,10 +40,10 @@ df_label<-get_csv(datadir,"labels")
 df_corpus<-get_csv(datadir,"corpus")
 df_merge<-get_csv(datadir,"merge")
 
-#df_domainrangedata<-df_domainrangedata[corpus=="obo",]
-#df_axiomdata<-df_axiomdata[corpus=="obo",]
-#df_expressiondata<-df_expressiondata[corpus=="obo",]
-#df_property<-df_property[corpus=="obo",]
+df_domainrangedata<-df_domainrangedata[corpus=="obo",]
+df_axiomdata<-df_axiomdata[corpus=="obo",]
+df_expressiondata<-df_expressiondata[corpus=="obo",]
+df_property<-df_property[corpus=="obo",]
 
 df_property[,p_label:=NULL]
 df_label[,o:=gsub(rodirpath,"",filename)]
@@ -64,7 +64,7 @@ df_p[,corpussize:=freq]
 df_p[,freq:=NULL]
 
 # Propare domain range asserted data
-df_domain_range_asserted<-unique(df_property[domain!=""|range!="",.(ftype,corpus,p,domain,range)])
+df_domain_range_asserted<-unique(df_property[domain!=""|range!="",.(ftype,corpus,p,domain,range,o)])
 
 # Prepare axiom data
 df_ax<-unique(df_axiomdata[axiomtype!="Declaration",.(o,ftype,corpus,axiomtype,axiomid,p)])

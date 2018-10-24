@@ -37,7 +37,7 @@ ts<-function(x) {
 ```
 
 ```{r settings, echo=FALSE}
-ws = "rosurvey.RData"
+ws = "rosurvey_obo.RData"
 
 rbox_types<-c("SubPropertyChainOf", "SubObjectPropertyOf", "ObjectPropertyDomain", "InverseObjectProperties", "TransitiveObjectProperty", "ReflexiveObjectProperty", "AsymmetricObjectProperty", "IrrefexiveObjectProperty", "InverseFunctionalObjectProperty", "FunctionalObjectProperty", "SymmetricObjectProperty", "DisjointObjectProperties")
 tbox_abox_types<-c("SubClassOf", "EquivalentClasses", "Rule", "ClassAssertion", "ObjectPropertyAssertion","DisjointClasses")
@@ -82,6 +82,7 @@ names(dsig_ni_o_ct)<-c("o","ct_sig_ni")
 df_o<-merge(dsig_ni_o_ct,dsig_m_o_ct,by="o",all=TRUE)
 df_o[is.na(df_o)] <- 0
 #write.csv(file = "ro_survey_onts.csv",df_o)
+names(df_o)<-c("Ontology","RO rels (no imports)","RO rels (merged imports)")
 ts(df_o)
 dsig_m_unique<-dsig_ni_unique<-dsig_m_o_ct<-dsig_ni_o_ct<-NULL
 # OUT: df_o
@@ -164,23 +165,37 @@ renderPlot({
 ggplot(x[x$top20,],aes(x=reorder(label,freq),y=freq,fill=ftype))+geom_bar(stat="identity",position = "dodge")+ geom_text(aes(label=paste("",pc," %",sep="")), hjust=1, color="black",position = position_dodge(width = 1)) +xlab("RO Relation") + ylab("Number of ontologies used in") + coord_flip() 
 })
 #ggsave("obo_20_plus_mni.png", width = 12, height = 12, units = "cm")
-ts(x)
+xl<-x
+xl$top20<-NULL
+xl$ftype<-NULL
+names(xl)<-c("RO relation","Label","Nr. ontologies","% ontologies")
+ts(xl)
 ```
 
 
 ### Number of ontologies by axiom types
-Types of axioms involving RO relations (i.e. contain at least one RO relation in their signature)
+The following tables shows how many ontologies import or define a particular object property characteristic for ANY RO relation. For example, there might be 6 ontologies that define at least one RO relation as asymmetric.
 ```{r, echo=FALSE}
-# How many ontologies import a characteric of a RO relation
 d_char<-dm[dm$o!="ro"&(dm$axiomtype %in% characteristics_axiom_types),]
 d_char<-unique(d_char[,c("axiomtype","label","o")])
 d_char_ct<-count(d_char[,c("label","axiomtype")])
 d_char_p<-unique(d_char[,c("axiomtype","label")])
 d_char_p_ct<-count(d_char_p[,c("axiomtype")])
+names(d_char_p_ct)<-c("Property Characteristic","Nr. ontologies")
 ts(d_char_p_ct)
 ```
 
 ### Full Breadown of usage of RO relations
+in_sig_m:	Number of ontologies where RO relation appears in signature, imports merged
+
+in_sig_ni:	Number of ontologies where RO relation appears in signature, imports removed
+
+tboxabox_merged	Number of ontologies where RO relation appears in TBox or Abox axiom (not RBox), imports merged
+
+tboxabox_noimports	Number of ontologies where RO relation appears in TBox or Abox axiom (not RBox), imports removed
+
+all other:	Number of ontologies using the relation as part of a particular axiom type, imports MERGED
+
 ```{r}
 # P occurs in signature (merged)
 d_sig_ct<-count(dsig_m[,c("p")])
@@ -253,6 +268,7 @@ ct_p<-merge(ct_p,ct_ax,by=c("ftype","corpus","p","label"),all = TRUE)
 ```
 
 ## How many ontologies use RO?
+This usage is based on whether an ontology contained a RO relation in its signature. This includes any axiom types (such as property characteristics), including declarations!
 ```{r, echo=FALSE}
 DT::renderDataTable({
     x<- ct_ro
@@ -298,10 +314,11 @@ renderPlot({
     },height = 400,width = 600)
 
 h5("The following table shows the number of distinct RO relations used across the selected axiom types")
+p("For example, the HP ontology might be using 45")
 DT::renderDataTable({
      dgg<-unique(df_ax[df_ax$ftype==input$import&df_ax$corpus==input$corpus&(df_ax$axiomtype %in% input$in_axiomtype)&!(df_ax$o %in% input$exclude),c("label","o")])
      cdgg<-count(dgg[,c("o")])
-     cdgg<-cdgg[cdgg$freq>=input$rel_ct_offset[1]&cdgg$freq<=input$rel_ct_offset[2],]
+     #cdgg<-cdgg[cdgg$freq>=input$rel_ct_offset[1]&cdgg$freq<=input$rel_ct_offset[2],]
      cdgg[order(-cdgg$freq),]
      names(cdgg)<-c("Ontology","Number of RO relations used")
      cdgg
@@ -372,18 +389,38 @@ DT::renderDataTable({
    },options = list(pageLength = 10, autoWidth = TRUE),
    rownames= FALSE)
 
-hr()
-h4("Asserted domains and ranges of OBO relations")
+```
+
+## Asserted domains and ranges of RO relations
+The asserted domains and ranges for a given RO relation in the ontology (i.e. ObjectPropertyDomain or ObjectPropertyRange axioms with that relation).
+```{r domran}
 DT::renderDataTable({
-     x<-df_domain_range_asserted[df_domain_range_asserted$ftype==input$import&df_domain_range_asserted$corpus==input$corpus,c("p","domain","range")]
+     x<-df_domain_range_asserted[!(df_domain_range_asserted$o %in% input$exclude)&df_domain_range_asserted$ftype==input$import&df_domain_range_asserted$corpus==input$corpus,c("p","domain","range","o")]
      x<-merge(x,ro_labels,by=c("p"),all.x=TRUE)
-     names(x)<-c("RO relation","Domain","Range","Label")
-     x[,c("RO relation","Label","Domain","Range")]
+     names(x)<-c("RO relation","Domain","Range","Ontology","Label")
+     x[,c("RO relation","Label","Domain","Range","Ontology")]
    },options = list(pageLength = 10, autoWidth = TRUE),
    rownames= FALSE)
 
-hr()
-h4("Inferred domains of OBO relations")
+```
+
+## Inferred domains of OBO relations
+The inferred domains for a given RO relation in the ontology. There are five places where domains can be inferred:
+* ClassAssertion:
+  * a:R some C --> domain is all types of a, range is C plus superclasses (types are all classes a is inferred to be a member of)
+* DomainAxiom: 
+  * any asserted domain and all their superclasses
+* InNaryClassExpression: 
+  * X and (R some D) and Y: Range is D (and superclasses), Domain is X and Y
+* ObjectPropertyAssertion:     
+  * <a,R,c> : Domain of R is types of a, Range is types of c 
+* SubOrEquivalenceClass: 
+  * A Sub R some C : Domain of R is A, Range is C
+  * R some C Sub A : Domain of R is owl:Thing, Range is C
+  * A eq R some C is treated as A sub R some C, R some C sub A 
+  
+```{r domaininf}
+
 DT::renderDataTable({
     x<-df_dom[df_dom$ftype==input$import&df_dom$corpus==input$corpus,.(ftype,corpus,p,subject,expressiontype)]
     x<-count(x)
@@ -395,8 +432,24 @@ DT::renderDataTable({
    },options = list(pageLength = 10, autoWidth = TRUE),
    rownames= FALSE)
 
-hr()
-h4("Inferred ranges of OBO relations")
+```
+
+## Inferred ranges of OBO relations
+The inferred ranges for a given RO relation in the ontology. There are five places where ranges can be inferred:
+* ClassAssertion:
+  * a:R some C --> domain is all types of a, range is C plus superclasses (types are all classes a is inferred to be a member of)
+* RangeAxiom: 
+  * any asserted domain and all their superclasses
+* InNaryClassExpression: 
+  * X and (R some D) and Y: Range is D (and superclasses), Domain is X and Y
+* ObjectPropertyAssertion:     
+  * <a,R,c> : Domain of R is types of a, Range is types of c 
+* SubOrEquivalenceClass: 
+  * A Sub R some C : Domain of R is A, Range is C
+  * R some C Sub A : Domain of R is owl:Thing, Range is C
+  * A eq R some C is treated as A sub R some C, R some C sub A 
+
+```{r rangeinf}
 DT::renderDataTable({
     x<-df_ran[df_ran$ftype==input$import&df_ran$corpus==input$corpus,.(ftype,corpus,p,object,expressiontype)]
     x<-count(x)
@@ -408,8 +461,12 @@ DT::renderDataTable({
    },options = list(pageLength = 10, autoWidth = TRUE),
    rownames= FALSE)
 
-hr()
-h4("Full breakdown of relations used across ontologies")
+```
+
+
+# Full breakdown of relations used across ontologies
+A relation is 'used' by the ontology if it appears in its signature.
+```{r}
 DT::renderDataTable({
      x<-df_p[df_p$ftype==input$import&df_p$corpus==input$corpus,c("p","label","o")]
      names(x)<-c("RO relation", "Label","Ontology")
@@ -422,7 +479,9 @@ DT::renderDataTable({
 ```{r, echo=FALSE}
 h4("Experiment")
 DT::renderDataTable({
-     ct_download_sucess
+     x<-ct_download_sucess
+     names(x)<-c("Corpus","Downloadable","Imports mergable","Imports removable")
+     x
    },options = list(pageLength = 10, autoWidth = TRUE),
    rownames= FALSE)
 
