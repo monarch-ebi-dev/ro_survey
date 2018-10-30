@@ -450,6 +450,8 @@ The inferred ranges for a given RO relation in the ontology. There are five plac
   * A eq R some C is treated as A sub R some C, R some C sub A 
 
 ```{r rangeinf}
+
+
 DT::renderDataTable({
     x<-df_ran[df_ran$ftype==input$import&df_ran$corpus==input$corpus,.(ftype,corpus,p,object,expressiontype)]
     x<-count(x)
@@ -467,9 +469,12 @@ DT::renderDataTable({
 # Full breakdown of relations used across ontologies
 A relation is 'used' by the ontology if it appears in its signature.
 ```{r}
+selectInput("in_axiomtype_all", label = "Which axiom type?",
+                    choices = unique(df_ax$axiomtype), selected = "SubClassOf",multiple = TRUE)
 DT::renderDataTable({
-     x<-df_p[df_p$ftype==input$import&df_p$corpus==input$corpus,c("p","label","o")]
-     names(x)<-c("RO relation", "Label","Ontology")
+     x<-unique(df_ax[df_ax$ftype==input$import&df_ax$corpus==input$corpus&!(df_ax$o %in% input$exclude)&(df_ax$axiomtype %in% input$in_axiomtype_all),c("p","label","o","axiomid")])
+     x<-count(x[,c("p","label","o")])
+     names(x)<-c("RO relation", "Label","Ontology","Number of axioms")
      x
    },options = list(pageLength = 10, autoWidth = TRUE),
    rownames= FALSE)
