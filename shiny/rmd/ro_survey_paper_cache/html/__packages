@@ -1,0 +1,7 @@
+base
+data.table
+stringr
+plyr
+ggplot2
+DT
+knitr
